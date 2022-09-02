@@ -71,11 +71,16 @@ type RefreshTokenStorage interface {
 
 type DeviceCodeStorage interface {
 	CreateDeviceCodeSession(ctx context.Context, signature string, request fosite.Requester) (err error)
+
 	GetDeviceCodeSession(ctx context.Context, code string, session fosite.Session) (request fosite.Requester, err error)
+
 	DeleteDeviceCodeSession(ctx context.Context, code string) (err error)
 }
+
 type UserCodeStorage interface {
 	CreateUserCodeSession(ctx context.Context, signature string, request fosite.Requester) (err error)
+
 	GetUserCodeSession(ctx context.Context, code string, session fosite.Session) (request fosite.Requester, err error)
+
 	DeleteUserCodeSession(ctx context.Context, code string) (err error)
 }

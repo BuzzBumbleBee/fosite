@@ -66,7 +66,7 @@ func (v *OpenIDConnectRequestValidator) secureChecker() func(*url.URL) bool {
 	return v.IsRedirectURISecure
 }
 
-func (v *OpenIDConnectRequestValidator) ValidatePrompt(ctx context.Context, req fosite.AuthorizeRequester) error {
+func (v *OpenIDConnectRequestValidator) ValidatePrompt(ctx context.Context, req fosite.Requester) error {
 	// prompt is case sensitive!
 	prompt := fosite.RemoveEmpty(strings.Split(req.GetRequestForm().Get("prompt"), " "))
 
@@ -90,8 +90,10 @@ func (v *OpenIDConnectRequestValidator) ValidatePrompt(ctx context.Context, req 
 		//  be processed as if no previous request had been approved.
 
 		if stringslice.Has(prompt, "none") {
-			if !v.secureChecker()(req.GetRedirectURI()) {
-				return errorsx.WithStack(fosite.ErrConsentRequired.WithHint("OAuth 2.0 Client is marked public and redirect uri is not considered secure (https missing), but \"prompt=none\" was requested."))
+			if ar, ok := req.(fosite.AuthorizeRequester); ok {
+				if !v.secureChecker()(ar.GetRedirectURI()) {
+					return errorsx.WithStack(fosite.ErrConsentRequired.WithHint("OAuth 2.0 Client is marked public and redirect uri is not considered secure (https missing), but \"prompt=none\" was requested."))
+				}
 			}
 		}
 	}

@@ -77,7 +77,8 @@ type OAuth2Provider interface {
 	NewAuthorizeRequest(ctx context.Context, req *http.Request) (AuthorizeRequester, error)
 
 	// ToDo add ietf docs
-	NewDeviceAuthorizeRequest(ctx context.Context, req *http.Request) (Requester, error)
+	NewDeviceAuthorizeGetRequest(ctx context.Context, req *http.Request) (DeviceAuthorizeRequester, error)
+	NewDeviceAuthorizePostRequest(ctx context.Context, req *http.Request) (DeviceAuthorizeRequester, error)
 	NewDeviceAuthorizeResponse(ctx context.Context, requester Requester) (DeviceAuthorizeResponder, error)
 	WriteDeviceAuthorizeResponse(rw http.ResponseWriter, requester Requester, responder DeviceAuthorizeResponder)
 
@@ -262,6 +263,11 @@ type AccessRequester interface {
 	// GetGrantType returns the requests grant type.
 	GetGrantTypes() (grantTypes Arguments)
 
+	Requester
+}
+
+// DeviceAuthorizeRequester is an device authorize endpoint's request context.
+type DeviceAuthorizeRequester interface {
 	Requester
 }
 
