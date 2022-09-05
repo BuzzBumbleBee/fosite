@@ -3,7 +3,6 @@ package oauth2
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ory/fosite"
 	"github.com/ory/x/errorsx"
@@ -16,9 +15,7 @@ type AuthorizeDeviceGrantTypeHandler struct {
 	AccessTokenStrategy   AccessTokenStrategy
 	RefreshTokenStrategy  RefreshTokenStrategy
 	AuthorizeCodeStrategy AuthorizeCodeStrategy
-	RefreshTokenScopes    []string
-	AccessTokenLifespan   time.Duration
-	RefreshTokenLifespan  time.Duration
+	Config                fosite.Configurator
 }
 
 func (c *AuthorizeDeviceGrantTypeHandler) HandleAuthorizeEndpointRequest(ctx context.Context, ar fosite.AuthorizeRequester, resp fosite.AuthorizeResponder) error {
@@ -34,7 +31,7 @@ func (c *AuthorizeDeviceGrantTypeHandler) HandleAuthorizeEndpointRequest(ctx con
 	resp.AddParameter("state", ar.GetState())
 
 	userCode := ar.GetRequestForm().Get("user_code")
-	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(userCode)
+	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(ctx, userCode)
 
 	session, err := c.CoreStorage.GetUserCodeSession(ctx, userCodeSignature, fosite.NewRequest().Session)
 	if err != nil {

@@ -37,11 +37,13 @@ import (
 type OpenIDConnectRefreshHandler struct {
 	*IDTokenHandleHelper
 
-	IDTokenLifespan time.Duration
+	Config interface {
+		fosite.IDTokenLifespanProvider
+	}
 }
 
 func (c *OpenIDConnectRefreshHandler) HandleTokenEndpointRequest(ctx context.Context, request fosite.AccessRequester) error {
-	if !c.CanHandleTokenEndpointRequest(request) {
+	if !c.CanHandleTokenEndpointRequest(ctx, request) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
@@ -79,7 +81,7 @@ func (c *OpenIDConnectRefreshHandler) HandleTokenEndpointRequest(ctx context.Con
 }
 
 func (c *OpenIDConnectRefreshHandler) PopulateTokenEndpointResponse(ctx context.Context, requester fosite.AccessRequester, responder fosite.AccessResponder) error {
-	if !c.CanHandleTokenEndpointRequest(requester) {
+	if !c.CanHandleTokenEndpointRequest(ctx, requester) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
@@ -111,15 +113,15 @@ func (c *OpenIDConnectRefreshHandler) PopulateTokenEndpointResponse(ctx context.
 	claims.CodeHash = ""
 	claims.IssuedAt = time.Now().Truncate(time.Second)
 
-	idTokenLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeRefreshToken, fosite.IDToken, c.IDTokenLifespan)
+	idTokenLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeRefreshToken, fosite.IDToken, c.Config.GetIDTokenLifespan(ctx))
 	return c.IssueExplicitIDToken(ctx, idTokenLifespan, requester, responder)
 }
 
-func (c *OpenIDConnectRefreshHandler) CanSkipClientAuth(requester fosite.AccessRequester) bool {
+func (c *OpenIDConnectRefreshHandler) CanSkipClientAuth(ctx context.Context, requester fosite.AccessRequester) bool {
 	return false
 }
 
-func (c *OpenIDConnectRefreshHandler) CanHandleTokenEndpointRequest(requester fosite.AccessRequester) bool {
+func (c *OpenIDConnectRefreshHandler) CanHandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) bool {
 	// grant_type REQUIRED.
 	// Value MUST be set to "refresh_token"
 	return requester.GetGrantTypes().ExactOne("refresh_token")

@@ -1,6 +1,7 @@
 package oauth2
 
 import (
+	"context"
 	"net/url"
 	"testing"
 	"time"
@@ -24,8 +25,16 @@ func TestAuthorizeCode_HandleDeviceAuthorizeEndpointRequest(t *testing.T) {
 				AccessTokenStrategy:   strategy,
 				RefreshTokenStrategy:  strategy,
 				AuthorizeCodeStrategy: strategy,
-				AccessTokenLifespan:   time.Minute * 60,
-				RefreshTokenLifespan:  time.Minute * 120,
+				Config: &fosite.Config{
+					DeviceAndUserCodeLifespan:      time.Minute * 10,
+					DeviceAuthTokenPollingInterval: time.Second * 10,
+					DeviceVerificationURL:          "localhost",
+					AccessTokenLifespan:            time.Hour,
+					RefreshTokenLifespan:           time.Hour,
+					ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+					AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+					RefreshTokenScopes:             []string{"offline"},
+				},
 			}
 			for _, c := range []struct {
 				handler     AuthorizeDeviceGrantTypeHandler
@@ -170,7 +179,7 @@ func TestAuthorizeCode_HandleDeviceAuthorizeEndpointRequest(t *testing.T) {
 					c.breq.Session = &fosite.DefaultSession{Subject: "A"}
 					expireAt := time.Now().UTC().Add(c.expire)
 					c.areq.Session.SetExpiresAt(fosite.UserCode, expireAt)
-					userCodeSig := hmacshaStrategy.UserCodeSignature(c.areq.Form.Get("user_code"))
+					userCodeSig := hmacshaStrategy.UserCodeSignature(context.Background(), c.areq.Form.Get("user_code"))
 					store.CreateUserCodeSession(nil, userCodeSig, c.areq)
 
 					aresp := fosite.NewAuthorizeResponse()

@@ -40,16 +40,18 @@ func parseUrl(uu string) *url.URL {
 }
 
 func TestAuthorizeCode_HandleAuthorizeEndpointRequest(t *testing.T) {
-	for k, strategy := range map[string]CoreStrategy{
+	for k, strategy := range map[string]AuthorizeCodeStrategy{
 		"hmac": &hmacshaStrategy,
 	} {
 		t.Run("strategy="+k, func(t *testing.T) {
 			store := storage.NewMemoryStore()
 			handler := AuthorizeExplicitGrantHandler{
-				CoreStorage:              store,
-				AuthorizeCodeStrategy:    strategy,
-				ScopeStrategy:            fosite.HierarchicScopeStrategy,
-				AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
+				CoreStorage:           store,
+				AuthorizeCodeStrategy: strategy,
+				Config: &fosite.Config{
+					AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
+					ScopeStrategy:            fosite.HierarchicScopeStrategy,
+				},
 			}
 			for _, c := range []struct {
 				handler     AuthorizeExplicitGrantHandler
@@ -138,11 +140,13 @@ func TestAuthorizeCode_HandleAuthorizeEndpointRequest(t *testing.T) {
 				},
 				{
 					handler: AuthorizeExplicitGrantHandler{
-						CoreStorage:              store,
-						AuthorizeCodeStrategy:    strategy,
-						ScopeStrategy:            fosite.HierarchicScopeStrategy,
-						AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
-						OmitRedirectScopeParam:   true,
+						CoreStorage:           store,
+						AuthorizeCodeStrategy: strategy,
+						Config: &fosite.Config{
+							ScopeStrategy:            fosite.HierarchicScopeStrategy,
+							AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
+							OmitRedirectScopeParam:   true,
+						},
 					},
 					areq: &fosite.AuthorizeRequest{
 						ResponseTypes: fosite.Arguments{"code"},

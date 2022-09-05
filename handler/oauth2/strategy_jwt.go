@@ -35,20 +35,12 @@ import (
 
 // DefaultJWTStrategy is a JWT RS256 strategy.
 type DefaultJWTStrategy struct {
-	jwt.JWTStrategy
+	jwt.Signer
 	HMACSHAStrategy *HMACSHAStrategy
-	Issuer          string
-	ScopeField      jwt.JWTScopeFieldEnum
-}
-
-func (h *DefaultJWTStrategy) WithIssuer(issuer string) *DefaultJWTStrategy {
-	h.Issuer = issuer
-	return h
-}
-
-func (h *DefaultJWTStrategy) WithScopeField(scopeField jwt.JWTScopeFieldEnum) *DefaultJWTStrategy {
-	h.ScopeField = scopeField
-	return h
+	Config          interface {
+		fosite.AccessTokenIssuerProvider
+		fosite.JWTScopeFieldProvider
+	}
 }
 
 func (h DefaultJWTStrategy) signature(token string) string {
@@ -60,7 +52,7 @@ func (h DefaultJWTStrategy) signature(token string) string {
 	return split[2]
 }
 
-func (h DefaultJWTStrategy) AccessTokenSignature(token string) string {
+func (h DefaultJWTStrategy) AccessTokenSignature(ctx context.Context, token string) string {
 	return h.signature(token)
 }
 
@@ -69,16 +61,16 @@ func (h *DefaultJWTStrategy) GenerateAccessToken(ctx context.Context, requester 
 }
 
 func (h *DefaultJWTStrategy) ValidateAccessToken(ctx context.Context, _ fosite.Requester, token string) error {
-	_, err := validate(ctx, h.JWTStrategy, token)
+	_, err := validate(ctx, h.Signer, token)
 	return err
 }
 
-func (h DefaultJWTStrategy) RefreshTokenSignature(token string) string {
-	return h.HMACSHAStrategy.RefreshTokenSignature(token)
+func (h DefaultJWTStrategy) RefreshTokenSignature(ctx context.Context, token string) string {
+	return h.HMACSHAStrategy.RefreshTokenSignature(ctx, token)
 }
 
-func (h DefaultJWTStrategy) AuthorizeCodeSignature(token string) string {
-	return h.HMACSHAStrategy.AuthorizeCodeSignature(token)
+func (h DefaultJWTStrategy) AuthorizeCodeSignature(ctx context.Context, token string) string {
+	return h.HMACSHAStrategy.AuthorizeCodeSignature(ctx, token)
 }
 
 func (h *DefaultJWTStrategy) GenerateRefreshToken(ctx context.Context, req fosite.Requester) (token string, signature string, err error) {
@@ -97,7 +89,7 @@ func (h *DefaultJWTStrategy) ValidateAuthorizeCode(ctx context.Context, req fosi
 	return h.HMACSHAStrategy.ValidateAuthorizeCode(ctx, req, token)
 }
 
-func validate(ctx context.Context, jwtStrategy jwt.JWTStrategy, token string) (t *jwt.Token, err error) {
+func validate(ctx context.Context, jwtStrategy jwt.Signer, token string) (t *jwt.Token, err error) {
 	t, err = jwtStrategy.Decode(ctx, token)
 	if err == nil {
 		err = t.Claims.Valid()
@@ -148,36 +140,36 @@ func (h *DefaultJWTStrategy) generate(ctx context.Context, tokenType fosite.Toke
 			).
 			WithDefaults(
 				time.Now().UTC(),
-				h.Issuer,
+				h.Config.GetAccessTokenIssuer(ctx),
 			).
 			WithScopeField(
-				h.ScopeField,
+				h.Config.GetJWTScopeField(ctx),
 			)
 
-		return h.JWTStrategy.Generate(ctx, claims.ToMapClaims(), jwtSession.GetJWTHeader())
+		return h.Signer.Generate(ctx, claims.ToMapClaims(), jwtSession.GetJWTHeader())
 	}
 }
 
-func (h DefaultJWTStrategy) DeviceCodeSignature(token string) string {
-	return h.HMACSHAStrategy.DeviceCodeSignature(token)
+func (h DefaultJWTStrategy) DeviceCodeSignature(ctx context.Context, token string) string {
+	return h.HMACSHAStrategy.DeviceCodeSignature(ctx, token)
 }
 
-func (h *DefaultJWTStrategy) GenerateDeviceCode() (token string, err error) {
-	return h.HMACSHAStrategy.GenerateDeviceCode()
+func (h *DefaultJWTStrategy) GenerateDeviceCode(ctx context.Context) (token string, err error) {
+	return h.HMACSHAStrategy.GenerateDeviceCode(ctx)
 }
 
-func (h *DefaultJWTStrategy) ValidateDeviceCode(context context.Context, r fosite.Requester, code string) (err error) {
-	return h.HMACSHAStrategy.ValidateDeviceCode(context, r, code)
+func (h *DefaultJWTStrategy) ValidateDeviceCode(ctx context.Context, r fosite.Requester, code string) (err error) {
+	return h.HMACSHAStrategy.ValidateDeviceCode(ctx, r, code)
 }
 
-func (h DefaultJWTStrategy) UserCodeSignature(token string) string {
-	return h.HMACSHAStrategy.UserCodeSignature(token)
+func (h DefaultJWTStrategy) UserCodeSignature(ctx context.Context, token string) string {
+	return h.HMACSHAStrategy.UserCodeSignature(ctx, token)
 }
 
-func (h *DefaultJWTStrategy) GenerateUserCode() (token string, err error) {
-	return h.HMACSHAStrategy.GenerateUserCode()
+func (h *DefaultJWTStrategy) GenerateUserCode(ctx context.Context) (token string, err error) {
+	return h.HMACSHAStrategy.GenerateUserCode(ctx)
 }
 
-func (h *DefaultJWTStrategy) ValidateUserCode(context context.Context, r fosite.Requester, code string) (err error) {
-	return h.HMACSHAStrategy.ValidateUserCode(context, r, code)
+func (h *DefaultJWTStrategy) ValidateUserCode(ctx context.Context, r fosite.Requester, code string) (err error) {
+	return h.HMACSHAStrategy.ValidateUserCode(ctx, r, code)
 }

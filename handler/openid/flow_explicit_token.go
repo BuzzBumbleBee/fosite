@@ -23,6 +23,7 @@ package openid
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ory/x/errorsx"
 
@@ -36,7 +37,7 @@ func (c *OpenIDConnectExplicitHandler) HandleTokenEndpointRequest(ctx context.Co
 }
 
 func (c *OpenIDConnectExplicitHandler) PopulateTokenEndpointResponse(ctx context.Context, requester fosite.AccessRequester, responder fosite.AccessResponder) error {
-	if !c.CanHandleTokenEndpointRequest(requester) {
+	if !c.CanHandleTokenEndpointRequest(ctx, requester) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
@@ -55,7 +56,7 @@ func (c *OpenIDConnectExplicitHandler) PopulateTokenEndpointResponse(ctx context
 		return errorsx.WithStack(fosite.ErrUnauthorizedClient.WithHint("The OAuth 2.0 Client is not allowed to use the authorization grant \"authorization_code\"."))
 	}
 
-	sess, ok := requester.GetSession().(Session)
+	sess, ok := authorize.GetSession().(Session)
 	if !ok {
 		return errorsx.WithStack(fosite.ErrServerError.WithDebug("Failed to generate id token because session must be of type fosite/handler/openid.Session."))
 	}
@@ -74,14 +75,15 @@ func (c *OpenIDConnectExplicitHandler) PopulateTokenEndpointResponse(ctx context
 	// 	return errorsx.WithStack(fosite.ErrInvalidGrant.WithDebug("The client is not allowed to use response type id_token"))
 	// }
 
-	idTokenLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.IDToken, c.IDTokenLifespan)
+	idTokenLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.IDToken, c.Config.GetIDTokenLifespan(ctx))
 	return c.IssueExplicitIDToken(ctx, idTokenLifespan, authorize, responder)
 }
 
-func (c *OpenIDConnectExplicitHandler) CanSkipClientAuth(requester fosite.AccessRequester) bool {
+func (c *OpenIDConnectExplicitHandler) CanSkipClientAuth(ctx context.Context, requester fosite.AccessRequester) bool {
 	return false
 }
 
-func (c *OpenIDConnectExplicitHandler) CanHandleTokenEndpointRequest(requester fosite.AccessRequester) bool {
+func (c *OpenIDConnectExplicitHandler) CanHandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) bool {
+	fmt.Println("CanHandleTokenEndpointRequest EXPL TOKEN")
 	return requester.GetGrantTypes().ExactOne("authorization_code")
 }

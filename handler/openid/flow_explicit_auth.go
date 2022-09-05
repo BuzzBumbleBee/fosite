@@ -35,10 +35,15 @@ type OpenIDConnectExplicitHandler struct {
 	OpenIDConnectRequestStorage   OpenIDConnectRequestStorage
 	OpenIDConnectRequestValidator *OpenIDConnectRequestValidator
 
-	IDTokenLifespan time.Duration
+	Config interface {
+		fosite.IDTokenLifespanProvider
+	}
 
 	*IDTokenHandleHelper
 }
+
+var _ fosite.AuthorizeEndpointHandler = (*OpenIDConnectExplicitHandler)(nil)
+var _ fosite.TokenEndpointHandler = (*OpenIDConnectExplicitHandler)(nil)
 
 var oidcParameters = []string{"grant_type",
 	"max_age",

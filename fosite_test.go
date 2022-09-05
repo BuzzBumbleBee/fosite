@@ -22,6 +22,7 @@
 package fosite_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,7 @@ import (
 
 	. "github.com/ory/fosite"
 	"github.com/ory/fosite/handler/oauth2"
+	"github.com/ory/fosite/handler/par"
 )
 
 func TestAuthorizeEndpointHandlers(t *testing.T) {
@@ -64,12 +66,19 @@ func TestAuthorizedRequestValidators(t *testing.T) {
 	assert.Equal(t, hs[0], h)
 }
 
-func TestMinParameterEntropy(t *testing.T) {
-	f := Fosite{}
-	assert.Equal(t, MinParameterEntropy, f.GetMinParameterEntropy())
+func TestPushedAuthorizedRequestHandlers(t *testing.T) {
+	h := &par.PushedAuthorizeHandler{}
+	hs := PushedAuthorizeEndpointHandlers{}
+	hs.Append(h)
+	hs.Append(h)
+	require.Len(t, hs, 1)
+	assert.Equal(t, hs[0], h)
+}
 
-	f = Fosite{
-		MinParameterEntropy: 42,
-	}
-	assert.Equal(t, 42, f.GetMinParameterEntropy())
+func TestMinParameterEntropy(t *testing.T) {
+	f := Fosite{Config: new(Config)}
+	assert.Equal(t, MinParameterEntropy, f.GetMinParameterEntropy(context.Background()))
+
+	f = Fosite{Config: &Config{MinParameterEntropy: 42}}
+	assert.Equal(t, 42, f.GetMinParameterEntropy(context.Background()))
 }

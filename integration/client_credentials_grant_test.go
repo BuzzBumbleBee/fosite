@@ -43,6 +43,14 @@ import (
 	"github.com/ory/fosite/internal"
 )
 
+func TestClientCredentialsFlow(t *testing.T) {
+	for _, strategy := range []oauth2.AccessTokenStrategy{
+		hmacStrategy,
+	} {
+		runClientCredentialsGrantTest(t, strategy)
+	}
+}
+
 func introspect(t *testing.T, ts *httptest.Server, token string, p interface{}, username, password string) {
 	req, err := http.NewRequest("POST", ts.URL+"/introspect", strings.NewReader(url.Values{"token": {token}}.Encode()))
 	require.NoError(t, err)
@@ -57,16 +65,8 @@ func introspect(t *testing.T, ts *httptest.Server, token string, p interface{}, 
 	require.NoError(t, json.Unmarshal(body, p))
 }
 
-func TestClientCredentialsFlow(t *testing.T) {
-	for _, strategy := range []oauth2.AccessTokenStrategy{
-		hmacStrategy,
-	} {
-		runClientCredentialsGrantTest(t, strategy)
-	}
-}
-
 func runClientCredentialsGrantTest(t *testing.T, strategy oauth2.AccessTokenStrategy) {
-	f := compose.Compose(new(compose.Config), fositeStore, strategy, nil, compose.OAuth2ClientCredentialsGrantFactory, compose.OAuth2TokenIntrospectionFactory)
+	f := compose.Compose(new(fosite.Config), fositeStore, strategy, compose.OAuth2ClientCredentialsGrantFactory, compose.OAuth2TokenIntrospectionFactory)
 	ts := mockServer(t, f, &fosite.DefaultSession{})
 	defer ts.Close()
 
@@ -77,7 +77,7 @@ func runClientCredentialsGrantTest(t *testing.T, strategy oauth2.AccessTokenStra
 		description string
 		setup       func()
 		err         bool
-		check       func(t *testing.T, r *goauth.Token)
+		check       func(t *testing.T, token *goauth.Token)
 		params      url.Values
 	}{
 		{
@@ -157,6 +157,11 @@ func runClientCredentialsGrantTest(t *testing.T, strategy oauth2.AccessTokenStra
 			if !c.err {
 				assert.NotEmpty(t, token.AccessToken, "(%d) %s\n%s", k, c.description, token)
 			}
+
+			if c.check != nil {
+				c.check(t, token)
+			}
+
 			t.Logf("Passed test case %d", k)
 		})
 	}

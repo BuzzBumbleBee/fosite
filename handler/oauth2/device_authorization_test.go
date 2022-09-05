@@ -17,12 +17,20 @@ func Test_HandleDeviceAuthorizeEndpointRequest(t *testing.T) {
 	deviceStore := storage.NewMemoryStore()
 	userStore := storage.NewMemoryStore()
 	handler := DeviceAuthorizationHandler{
-		DeviceCodeStorage:         deviceStore,
-		UserCodeStorage:           userStore,
-		DeviceCodeStrategy:        hmacshaStrategy,
-		UserCodeStrategy:          hmacshaStrategy,
-		DeviceAndUserCodeLifespan: time.Minute * 5,
-		VerificationURI:           "www.test.com",
+		DeviceCodeStorage:  deviceStore,
+		UserCodeStorage:    userStore,
+		DeviceCodeStrategy: hmacshaStrategy,
+		UserCodeStrategy:   hmacshaStrategy,
+		Config: &fosite.Config{
+			DeviceAndUserCodeLifespan:      time.Minute * 10,
+			DeviceAuthTokenPollingInterval: time.Second * 10,
+			DeviceVerificationURL:          "www.test.com",
+			AccessTokenLifespan:            time.Hour,
+			RefreshTokenLifespan:           time.Hour,
+			ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+			AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+			RefreshTokenScopes:             []string{"offline"},
+		},
 	}
 
 	req := &fosite.AuthorizeRequest{

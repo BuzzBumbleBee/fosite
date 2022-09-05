@@ -37,7 +37,7 @@ import (
 // HandleTokenEndpointRequest implements
 // * https://tools.ietf.org/html/rfc6749#section-4.1.3 (everything)
 func (c *AuthorizeExplicitGrantHandler) HandleTokenEndpointRequest(ctx context.Context, request fosite.AccessRequester) error {
-	if !c.CanHandleTokenEndpointRequest(request) {
+	if !c.CanHandleTokenEndpointRequest(ctx, request) {
 		return errorsx.WithStack(errorsx.WithStack(fosite.ErrUnknownRequest))
 	}
 
@@ -46,7 +46,7 @@ func (c *AuthorizeExplicitGrantHandler) HandleTokenEndpointRequest(ctx context.C
 	}
 
 	code := request.GetRequestForm().Get("code")
-	signature := c.AuthorizeCodeStrategy.AuthorizeCodeSignature(code)
+	signature := c.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code)
 	authorizeRequest, err := c.CoreStorage.GetAuthorizeCodeSession(ctx, signature, request.GetSession())
 	if errors.Is(err, fosite.ErrInvalidatedAuthorizeCode) {
 		if authorizeRequest == nil {
@@ -110,10 +110,10 @@ func (c *AuthorizeExplicitGrantHandler) HandleTokenEndpointRequest(ctx context.C
 	request.SetSession(authorizeRequest.GetSession())
 	request.SetID(authorizeRequest.GetID())
 
-	atLifespan := fosite.GetEffectiveLifespan(request.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, c.AccessTokenLifespan)
+	atLifespan := fosite.GetEffectiveLifespan(request.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, c.Config.GetAccessTokenLifespan(ctx))
 	request.GetSession().SetExpiresAt(fosite.AccessToken, time.Now().UTC().Add(atLifespan).Round(time.Second))
 
-	rtLifespan := fosite.GetEffectiveLifespan(request.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.RefreshToken, c.RefreshTokenLifespan)
+	rtLifespan := fosite.GetEffectiveLifespan(request.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.RefreshToken, c.Config.GetRefreshTokenLifespan(ctx))
 	if rtLifespan > -1 {
 		request.GetSession().SetExpiresAt(fosite.RefreshToken, time.Now().UTC().Add(rtLifespan).Round(time.Second))
 	}
@@ -121,9 +121,10 @@ func (c *AuthorizeExplicitGrantHandler) HandleTokenEndpointRequest(ctx context.C
 	return nil
 }
 
-func (c *AuthorizeExplicitGrantHandler) canIssueRefreshToken(request fosite.Requester) bool {
+func canIssueRefreshToken(ctx context.Context, c *AuthorizeExplicitGrantHandler, request fosite.Requester) bool {
+	scope := c.Config.GetRefreshTokenScopes(ctx)
 	// Require one of the refresh token scopes, if set.
-	if len(c.RefreshTokenScopes) > 0 && !request.GetGrantedScopes().HasOneOf(c.RefreshTokenScopes...) {
+	if len(scope) > 0 && !request.GetGrantedScopes().HasOneOf(scope...) {
 		return false
 	}
 	// Do not issue a refresh token to clients that cannot use the refresh token grant type.
@@ -134,12 +135,12 @@ func (c *AuthorizeExplicitGrantHandler) canIssueRefreshToken(request fosite.Requ
 }
 
 func (c *AuthorizeExplicitGrantHandler) PopulateTokenEndpointResponse(ctx context.Context, requester fosite.AccessRequester, responder fosite.AccessResponder) (err error) {
-	if !c.CanHandleTokenEndpointRequest(requester) {
+	if !c.CanHandleTokenEndpointRequest(ctx, requester) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
 	code := requester.GetRequestForm().Get("code")
-	signature := c.AuthorizeCodeStrategy.AuthorizeCodeSignature(code)
+	signature := c.AuthorizeCodeStrategy.AuthorizeCodeSignature(ctx, code)
 	authorizeRequest, err := c.CoreStorage.GetAuthorizeCodeSession(ctx, signature, requester.GetSession())
 	if err != nil {
 		return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
@@ -162,7 +163,7 @@ func (c *AuthorizeExplicitGrantHandler) PopulateTokenEndpointResponse(ctx contex
 	}
 
 	var refresh, refreshSignature string
-	if c.canIssueRefreshToken(authorizeRequest) {
+	if canIssueRefreshToken(ctx, c, authorizeRequest) {
 		refresh, refreshSignature, err = c.RefreshTokenStrategy.GenerateRefreshToken(ctx, requester)
 		if err != nil {
 			return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
@@ -193,7 +194,7 @@ func (c *AuthorizeExplicitGrantHandler) PopulateTokenEndpointResponse(ctx contex
 
 	responder.SetAccessToken(access)
 	responder.SetTokenType("bearer")
-	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, c.AccessTokenLifespan)
+	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, c.Config.GetAccessTokenLifespan(ctx))
 	responder.SetExpiresIn(getExpiresIn(requester, fosite.AccessToken, atLifespan, time.Now().UTC()))
 	responder.SetScopes(requester.GetGrantedScopes())
 	if refresh != "" {
@@ -207,11 +208,11 @@ func (c *AuthorizeExplicitGrantHandler) PopulateTokenEndpointResponse(ctx contex
 	return nil
 }
 
-func (c *AuthorizeExplicitGrantHandler) CanSkipClientAuth(requester fosite.AccessRequester) bool {
+func (c *AuthorizeExplicitGrantHandler) CanSkipClientAuth(ctx context.Context, requester fosite.AccessRequester) bool {
 	return false
 }
 
-func (c *AuthorizeExplicitGrantHandler) CanHandleTokenEndpointRequest(requester fosite.AccessRequester) bool {
+func (c *AuthorizeExplicitGrantHandler) CanHandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) bool {
 	// grant_type REQUIRED.
 	// Value MUST be set to "authorization_code"
 	return requester.GetGrantTypes().ExactOne("authorization_code")
