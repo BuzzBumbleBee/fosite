@@ -64,20 +64,6 @@ func OAuth2RefreshTokenGrantFactory(config fosite.Configurator, storage interfac
 	}
 }
 
-func OAuth2AuthorizeDeviceFactory(config *Config, storage interface{}, strategy interface{}) interface{} {
-	return &oauth2.AuthorizeDeviceGrantTypeHandler{
-		DeviceCodeStrategy:    strategy.(oauth2.DeviceCodeStrategy),
-		UserCodeStrategy:      strategy.(oauth2.UserCodeStrategy),
-		AccessTokenStrategy:   strategy.(oauth2.AccessTokenStrategy),
-		RefreshTokenStrategy:  strategy.(oauth2.RefreshTokenStrategy),
-		AuthorizeCodeStrategy: strategy.(oauth2.AuthorizeCodeStrategy),
-		CoreStorage:           storage.(oauth2.CoreStorage),
-		RefreshTokenScopes:    config.GetRefreshTokenScopes(),
-		AccessTokenLifespan:   config.GetAccessTokenLifespan(),
-		RefreshTokenLifespan:  config.GetRefreshTokenLifespan(),
-	}
-}
-
 // OAuth2AuthorizeImplicitFactory creates an OAuth2 implicit grant ("authorize implicit flow") handler and registers
 // an access token, refresh token and authorize code validator.
 func OAuth2AuthorizeImplicitFactory(config fosite.Configurator, storage interface{}, strategy interface{}) interface{} {
@@ -159,17 +145,5 @@ func OAuth2DeviceAuthorizeFactory(config fosite.Configurator, storage interface{
 		DeviceCodeStrategy: strategy.(oauth2.DeviceCodeStrategy),
 		UserCodeStrategy:   strategy.(oauth2.UserCodeStrategy),
 		Config:             config,
-	}
-}
-
-func OAuth2DeviceAuthorizeFactory(config *Config, storage interface{}, strategy interface{}) interface{} {
-	return &oauth2.DeviceAuthorizationHandler{
-		DeviceCodeStorage:         storage.(oauth2.DeviceCodeStorage),
-		UserCodeStorage:           storage.(oauth2.UserCodeStorage),
-		DeviceCodeStrategy:        strategy.(oauth2.DeviceCodeStrategy),
-		UserCodeStrategy:          strategy.(oauth2.UserCodeStrategy),
-		DeviceAndUserCodeLifespan: config.GetDeviceAndUserCodeLifespan(),
-		VerificationURI:           config.DeviceVerificationURL,
-		PollingInterval:           config.GetDeviceAuthTokenPollingInterval(),
 	}
 }

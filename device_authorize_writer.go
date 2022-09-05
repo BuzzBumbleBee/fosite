@@ -22,11 +22,12 @@
 package fosite
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
 
-func (f *Fosite) WriteDeviceAuthorizeResponse(rw http.ResponseWriter, r Requester, resp DeviceAuthorizeResponder) {
+func (f *Fosite) WriteDeviceAuthorizeResponse(ctx context.Context, rw http.ResponseWriter, r Requester, resp DeviceAuthorizeResponder) {
 	rw.Header().Set("Content-Type", "application/json;charset=UTF-8")
 	rw.Header().Set("Cache-Control", "no-store")
 	rw.Header().Set("Pragma", "no-cache")

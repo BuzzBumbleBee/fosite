@@ -28,7 +28,7 @@ import (
 func (f *Fosite) NewDeviceAuthorizeResponse(ctx context.Context, r Requester) (DeviceAuthorizeResponder, error) {
 	var resp = NewDeviceAuthorizeResponse()
 
-	for _, h := range f.DeviceAuthorizeEndpointHandlers {
+	for _, h := range f.Config.GetDeviceAuthorizeEndpointHandlers(ctx) {
 		if err := h.HandleDeviceAuthorizeEndpointRequest(ctx, r, resp); err != nil {
 			return nil, err
 		}

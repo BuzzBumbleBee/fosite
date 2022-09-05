@@ -154,7 +154,7 @@ func (h DefaultJWTStrategy) DeviceCodeSignature(ctx context.Context, token strin
 	return h.HMACSHAStrategy.DeviceCodeSignature(ctx, token)
 }
 
-func (h *DefaultJWTStrategy) GenerateDeviceCode(ctx context.Context) (token string, err error) {
+func (h *DefaultJWTStrategy) GenerateDeviceCode(ctx context.Context) (token string, signature string, err error) {
 	return h.HMACSHAStrategy.GenerateDeviceCode(ctx)
 }
 
@@ -166,7 +166,7 @@ func (h DefaultJWTStrategy) UserCodeSignature(ctx context.Context, token string)
 	return h.HMACSHAStrategy.UserCodeSignature(ctx, token)
 }
 
-func (h *DefaultJWTStrategy) GenerateUserCode(ctx context.Context) (token string, err error) {
+func (h *DefaultJWTStrategy) GenerateUserCode(ctx context.Context) (token string, signature string, err error) {
 	return h.HMACSHAStrategy.GenerateUserCode(ctx)
 }
 

@@ -55,12 +55,12 @@ type AuthorizeCodeStrategy interface {
 
 type DeviceCodeStrategy interface {
 	DeviceCodeSignature(ctx context.Context, code string) string
-	GenerateDeviceCode(ctx context.Context) (code string, err error)
+	GenerateDeviceCode(ctx context.Context) (code string, signature string, err error)
 	ValidateDeviceCode(ctx context.Context, r fosite.Requester, code string) (err error)
 }
 
 type UserCodeStrategy interface {
 	UserCodeSignature(ctx context.Context, code string) string
-	GenerateUserCode(ctx context.Context) (code string, err error)
+	GenerateUserCode(ctx context.Context) (code string, signature string, err error)
 	ValidateUserCode(ctx context.Context, r fosite.Requester, code string) (err error)
 }

@@ -193,11 +193,6 @@ type OAuth2Provider interface {
 
 	// WritePushedAuthorizeError writes the PAR error
 	WritePushedAuthorizeError(ctx context.Context, rw http.ResponseWriter, ar AuthorizeRequester, err error)
-
-	// ToDo add ietf docs
-	NewDeviceAuthorizeRequest(ctx context.Context, req *http.Request) (Requester, error)
-	NewDeviceAuthorizeResponse(ctx context.Context, requester Requester) (DeviceAuthorizeResponder, error)
-	WriteDeviceAuthorizeResponse(rw http.ResponseWriter, requester Requester, responder DeviceAuthorizeResponder)
 }
 
 // IntrospectionResponder is the response object that will be returned when token introspection was successful,

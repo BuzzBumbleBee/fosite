@@ -23,7 +23,6 @@ package openid
 
 import (
 	"context"
-	"time"
 
 	"github.com/ory/x/errorsx"
 

@@ -32,7 +32,7 @@ import (
 
 func (f *Fosite) NewDeviceAuthorizeGetRequest(ctx context.Context, r *http.Request) (DeviceAuthorizeRequester, error) {
 	request := NewDeviceAuthorizeRequest()
-	request.Lang = i18n.GetLangFromRequest(f.MessageCatalog, r)
+	request.Lang = i18n.GetLangFromRequest(f.Config.GetMessageCatalog(ctx), r)
 
 	if err := r.ParseMultipartForm(1 << 20); err != nil && err != http.ErrNotMultipart {
 		return request, errorsx.WithStack(ErrInvalidRequest.WithHint("Unable to parse HTTP body, make sure to send a properly formatted form request body.").WithWrap(err).WithDebug(err.Error()))
@@ -56,7 +56,7 @@ func (f *Fosite) NewDeviceAuthorizeGetRequest(ctx context.Context, r *http.Reque
 
 func (f *Fosite) NewDeviceAuthorizePostRequest(ctx context.Context, req *http.Request) (DeviceAuthorizeRequester, error) {
 	request := NewDeviceAuthorizeRequest()
-	request.Lang = i18n.GetLangFromRequest(f.MessageCatalog, req)
+	request.Lang = i18n.GetLangFromRequest(f.Config.GetMessageCatalog(ctx), req)
 
 	if err := req.ParseMultipartForm(1 << 20); err != nil && err != http.ErrNotMultipart {
 		return request, errorsx.WithStack(ErrInvalidRequest.WithHint("Unable to parse HTTP body, make sure to send a properly formatted form request body.").WithWrap(err).WithDebug(err.Error()))
@@ -69,20 +69,21 @@ func (f *Fosite) NewDeviceAuthorizePostRequest(ctx context.Context, req *http.Re
 	}
 	request.Client = client
 
-	if err := f.validateDeviceAuthorizeScope(req, request); err != nil {
+	if err := f.validateDeviceAuthorizeScope(ctx, req, request); err != nil {
 		return request, err
 	}
 
 	return request, nil
 }
 
-func (f *Fosite) validateDeviceAuthorizeScope(_ *http.Request, request *DeviceAuthorizeRequest) error {
+func (f *Fosite) validateDeviceAuthorizeScope(ctx context.Context, req *http.Request, request *DeviceAuthorizeRequest) error {
 	scope := RemoveEmpty(strings.Split(request.Form.Get("scope"), " "))
 	for _, permission := range scope {
-		if !f.ScopeStrategy(request.Client.GetScopes(), permission) {
+		if !f.Config.GetScopeStrategy(ctx)(request.Client.GetScopes(), permission) {
 			return errorsx.WithStack(ErrInvalidScope.WithHintf("The OAuth 2.0 Client is not allowed to request scope '%s'.", permission))
 		}
 	}
 	request.SetRequestedScopes(scope)
+
 	return nil
 }
