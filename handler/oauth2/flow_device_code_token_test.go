@@ -1,6 +1,7 @@
 package oauth2
 
 import (
+	"context"
 	"net/url"
 	"testing"
 	"time"
@@ -24,8 +25,16 @@ func TestAuthorizeCode_HandleDeviceTokenEndpointRequest(t *testing.T) {
 				AccessTokenStrategy:   strategy,
 				RefreshTokenStrategy:  strategy,
 				AuthorizeCodeStrategy: strategy,
-				AccessTokenLifespan:   time.Minute * 60,
-				RefreshTokenLifespan:  time.Minute * 120,
+				Config: &fosite.Config{
+					DeviceAndUserCodeLifespan:      time.Minute * 10,
+					DeviceAuthTokenPollingInterval: time.Second * 10,
+					DeviceVerificationURL:          "localhost",
+					AccessTokenLifespan:            time.Hour,
+					RefreshTokenLifespan:           time.Hour,
+					ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+					AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+					RefreshTokenScopes:             []string{"offline"},
+				},
 			}
 			for _, c := range []struct {
 				handler             AuthorizeDeviceGrantTypeHandler
@@ -190,7 +199,7 @@ func TestAuthorizeCode_HandleDeviceTokenEndpointRequest(t *testing.T) {
 						c.areq.Session = &fosite.DefaultSession{}
 						expireAt := time.Now().UTC().Add(c.expire)
 						c.areq.Session.SetExpiresAt(fosite.UserCode, expireAt)
-						deviceSignature := hmacshaStrategy.DeviceCodeSignature(c.areq.Form.Get("device_code"))
+						deviceSignature := hmacshaStrategy.DeviceCodeSignature(context.Background(), c.areq.Form.Get("device_code"))
 						store.CreateDeviceCodeSession(nil, deviceSignature, c.areq)
 					}
 
@@ -217,7 +226,6 @@ func TestAuthorizeCode_PopulateDeviceTokenEndpointResponse(t *testing.T) {
 	} {
 		t.Run("strategy="+k, func(t *testing.T) {
 			store := storage.NewMemoryStore()
-			offlineScope := []string{"offline"}
 			handler := AuthorizeDeviceGrantTypeHandler{
 				CoreStorage:           store,
 				DeviceCodeStrategy:    hmacshaStrategy,
@@ -225,9 +233,16 @@ func TestAuthorizeCode_PopulateDeviceTokenEndpointResponse(t *testing.T) {
 				AccessTokenStrategy:   strategy,
 				RefreshTokenStrategy:  strategy,
 				AuthorizeCodeStrategy: strategy,
-				AccessTokenLifespan:   time.Minute * 60,
-				RefreshTokenLifespan:  time.Minute * 120,
-				RefreshTokenScopes:    offlineScope,
+				Config: &fosite.Config{
+					DeviceAndUserCodeLifespan:      time.Minute * 10,
+					DeviceAuthTokenPollingInterval: time.Second * 10,
+					DeviceVerificationURL:          "localhost",
+					AccessTokenLifespan:            time.Hour,
+					RefreshTokenLifespan:           time.Hour,
+					ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+					AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+					RefreshTokenScopes:             []string{"offline"},
+				},
 			}
 			for _, c := range []struct {
 				handler             AuthorizeDeviceGrantTypeHandler
@@ -301,7 +316,7 @@ func TestAuthorizeCode_PopulateDeviceTokenEndpointResponse(t *testing.T) {
 					c.areq.GetSession().SetExpiresAt(fosite.UserCode, time.Now().Add(time.Minute*5))
 					if c.createDeviceSession {
 						c.areq.SetID("ID1")
-						deviceSig := hmacshaStrategy.DeviceCodeSignature(c.areq.Form.Get("device_code"))
+						deviceSig := hmacshaStrategy.DeviceCodeSignature(context.TODO(), c.areq.Form.Get("device_code"))
 						store.CreateDeviceCodeSession(nil, deviceSig, c.areq)
 					}
 

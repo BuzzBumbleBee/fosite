@@ -58,9 +58,9 @@ type MemoryStore struct {
 	AuthorizeCodes  map[string]StoreAuthorizeCode
 	IDSessions      map[string]fosite.Requester
 	AccessTokens    map[string]fosite.Requester
+	RefreshTokens   map[string]StoreRefreshToken
 	DeviceCodes     map[string]fosite.Requester
 	UserCodes       map[string]fosite.Requester
-	RefreshTokens   map[string]StoreRefreshToken
 	PKCES           map[string]fosite.Requester
 	Users           map[string]MemoryUserRelation
 	BlacklistedJTIs map[string]time.Time
@@ -71,14 +71,15 @@ type MemoryStore struct {
 	UserCodesRequestIDs    map[string]string
 	// Public keys to check signature in auth grant jwt assertion.
 	IssuerPublicKeys map[string]IssuerPublicKeys
+	PARSessions      map[string]fosite.AuthorizeRequester
 
 	clientsMutex                sync.RWMutex
 	authorizeCodesMutex         sync.RWMutex
-	userCodesMutex              sync.RWMutex
-	deviceCodesMutex            sync.RWMutex
 	idSessionsMutex             sync.RWMutex
 	accessTokensMutex           sync.RWMutex
 	refreshTokensMutex          sync.RWMutex
+	userCodesMutex              sync.RWMutex
+	deviceCodesMutex            sync.RWMutex
 	pkcesMutex                  sync.RWMutex
 	usersMutex                  sync.RWMutex
 	blacklistedJTIsMutex        sync.RWMutex
@@ -87,6 +88,7 @@ type MemoryStore struct {
 	userCodesRequestIDsMutex    sync.RWMutex
 	deviceCodesRequestIDsMutex  sync.RWMutex
 	issuerPublicKeysMutex       sync.RWMutex
+	parSessionsMutex            sync.RWMutex
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -106,6 +108,7 @@ func NewMemoryStore() *MemoryStore {
 		UserCodesRequestIDs:    make(map[string]string),
 		BlacklistedJTIs:        make(map[string]time.Time),
 		IssuerPublicKeys:       make(map[string]IssuerPublicKeys),
+		PARSessions:            make(map[string]fosite.AuthorizeRequester),
 	}
 }
 
@@ -166,8 +169,12 @@ func NewExampleStore() *MemoryStore {
 		AccessTokens:           map[string]fosite.Requester{},
 		RefreshTokens:          map[string]StoreRefreshToken{},
 		PKCES:                  map[string]fosite.Requester{},
+		DeviceCodes:            make(map[string]fosite.Requester),
+		UserCodes:              make(map[string]fosite.Requester),
 		AccessTokenRequestIDs:  map[string]string{},
 		RefreshTokenRequestIDs: map[string]string{},
+		DeviceCodesRequestIDs:  make(map[string]string),
+		UserCodesRequestIDs:    make(map[string]string),
 		IssuerPublicKeys:       map[string]IssuerPublicKeys{},
 	}
 }
@@ -490,6 +497,38 @@ func (s *MemoryStore) IsJWTUsed(ctx context.Context, jti string) (bool, error) {
 
 func (s *MemoryStore) MarkJWTUsedForTime(ctx context.Context, jti string, exp time.Time) error {
 	return s.SetClientAssertionJWT(ctx, jti, exp)
+}
+
+// CreatePARSession stores the pushed authorization request context. The requestURI is used to derive the key.
+func (s *MemoryStore) CreatePARSession(ctx context.Context, requestURI string, request fosite.AuthorizeRequester) error {
+	s.parSessionsMutex.Lock()
+	defer s.parSessionsMutex.Unlock()
+
+	s.PARSessions[requestURI] = request
+	return nil
+}
+
+// GetPARSession gets the push authorization request context. If the request is nil, a new request object
+// is created. Otherwise, the same object is updated.
+func (s *MemoryStore) GetPARSession(ctx context.Context, requestURI string) (fosite.AuthorizeRequester, error) {
+	s.parSessionsMutex.RLock()
+	defer s.parSessionsMutex.RUnlock()
+
+	r, ok := s.PARSessions[requestURI]
+	if !ok {
+		return nil, fosite.ErrNotFound
+	}
+
+	return r, nil
+}
+
+// DeletePARSession deletes the context.
+func (s *MemoryStore) DeletePARSession(ctx context.Context, requestURI string) (err error) {
+	s.parSessionsMutex.Lock()
+	defer s.parSessionsMutex.Unlock()
+
+	delete(s.PARSessions, requestURI)
+	return nil
 }
 
 func (s *MemoryStore) CreateDeviceCodeSession(_ context.Context, signature string, req fosite.Requester) error {

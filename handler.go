@@ -52,11 +52,11 @@ type TokenEndpointHandler interface {
 	// CanSkipClientAuth indicates if client authentication can be skipped. By default it MUST be false, unless you are
 	// implementing extension grant type, which allows unauthenticated client. CanSkipClientAuth must be called
 	// before HandleTokenEndpointRequest to decide, if AccessRequester will contain authenticated client.
-	CanSkipClientAuth(requester AccessRequester) bool
+	CanSkipClientAuth(ctx context.Context, requester AccessRequester) bool
 
 	// CanHandleRequest indicates, if TokenEndpointHandler can handle this request or not. If true,
 	// HandleTokenEndpointRequest can be called.
-	CanHandleTokenEndpointRequest(requester AccessRequester) bool
+	CanHandleTokenEndpointRequest(ctx context.Context, requester AccessRequester) bool
 }
 
 // RevocationHandler is the interface that allows token revocation for an OAuth2.0 provider.
@@ -75,6 +75,14 @@ type TokenEndpointHandler interface {
 type RevocationHandler interface {
 	// RevokeToken handles access and refresh token revocation.
 	RevokeToken(ctx context.Context, token string, tokenType TokenType, client Client) error
+}
+
+// PushedAuthorizeEndpointHandler is the interface that handles PAR (https://datatracker.ietf.org/doc/html/rfc9126)
+type PushedAuthorizeEndpointHandler interface {
+	// HandlePushedAuthorizeRequest handles a pushed authorize endpoint request. To extend the handler's capabilities, the http request
+	// is passed along, if further information retrieval is required. If the handler feels that he is not responsible for
+	// the pushed authorize request, he must return nil and NOT modify session nor responder neither requester.
+	HandlePushedAuthorizeEndpointRequest(ctx context.Context, requester AuthorizeRequester, responder PushedAuthorizeResponder) error
 }
 
 type DeviceAuthorizeEndpointHandler interface {

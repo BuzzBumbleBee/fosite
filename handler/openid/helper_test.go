@@ -22,9 +22,12 @@
 package openid
 
 import (
+	"context"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/ory/fosite/internal/gen"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
@@ -36,10 +39,14 @@ import (
 )
 
 var strat = &DefaultStrategy{
-	JWTStrategy: &jwt.RS256JWTStrategy{
-		PrivateKey: internal.MustRSAKey(),
+	Signer: &jwt.DefaultSigner{
+		GetPrivateKey: func(_ context.Context) (interface{}, error) {
+			return gen.MustRSAKey(), nil
+		},
 	},
-	MinParameterEntropy: fosite.MinParameterEntropy,
+	Config: &fosite.Config{
+		MinParameterEntropy: fosite.MinParameterEntropy,
+	},
 }
 
 var fooErr = errors.New("foo")

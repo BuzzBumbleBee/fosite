@@ -23,7 +23,6 @@ package openid
 
 import (
 	"context"
-	"time"
 
 	"github.com/ory/fosite/handler/oauth2"
 	"github.com/ory/x/errorsx"
@@ -39,7 +38,7 @@ type OpenIDConnectDeviceHandler struct {
 	OpenIDConnectRequestStorage   OpenIDConnectRequestStorage
 	OpenIDConnectRequestValidator *OpenIDConnectRequestValidator
 
-	IDTokenLifespan time.Duration
+	Config fosite.Configurator
 
 	*IDTokenHandleHelper
 }
@@ -54,7 +53,7 @@ func (c *OpenIDConnectDeviceHandler) HandleAuthorizeEndpointRequest(ctx context.
 	}
 
 	userCode := ar.GetRequestForm().Get("user_code")
-	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(userCode)
+	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(ctx, userCode)
 
 	userSession, err := c.CoreStorage.GetUserCodeSession(ctx, userCodeSignature, fosite.NewRequest().Session)
 	if err != nil {

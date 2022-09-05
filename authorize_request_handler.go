@@ -47,7 +47,7 @@ func wrapSigningKeyFailure(outer *RFC6749Error, inner error) *RFC6749Error {
 	return outer
 }
 
-func (f *Fosite) authorizeRequestParametersFromOpenIDConnectRequest(request *AuthorizeRequest) error {
+func (f *Fosite) authorizeRequestParametersFromOpenIDConnectRequest(ctx context.Context, request *AuthorizeRequest, isPARRequest bool) error {
 	var scope Arguments = RemoveEmpty(strings.Split(request.Form.Get("scope"), " "))
 
 	// Even if a scope parameter is present in the Request Object value, a scope parameter MUST always be passed using
@@ -81,11 +81,7 @@ func (f *Fosite) authorizeRequestParametersFromOpenIDConnectRequest(request *Aut
 			return errorsx.WithStack(ErrInvalidRequestURI.WithHintf("Request URI '%s' is not whitelisted by the OAuth 2.0 Client.", location))
 		}
 
-		hc := f.HTTPClient
-		if hc == nil {
-			hc = http.DefaultClient
-		}
-
+		hc := f.Config.GetHTTPClient(ctx)
 		response, err := hc.Get(location)
 		if err != nil {
 			return errorsx.WithStack(ErrInvalidRequestURI.WithHintf("Unable to fetch OpenID Connect request parameters from 'request_uri' because: %s.", err.Error()).WithWrap(err).WithDebug(err.Error()))
@@ -120,21 +116,21 @@ func (f *Fosite) authorizeRequestParametersFromOpenIDConnectRequest(request *Aut
 
 		switch t.Method {
 		case jose.RS256, jose.RS384, jose.RS512:
-			key, err := f.findClientPublicJWK(oidcClient, t, true)
+			key, err := f.findClientPublicJWK(ctx, oidcClient, t, true)
 			if err != nil {
 				return nil, wrapSigningKeyFailure(
 					ErrInvalidRequestObject.WithHint("Unable to retrieve RSA signing key from OAuth 2.0 Client."), err)
 			}
 			return key, nil
 		case jose.ES256, jose.ES384, jose.ES512:
-			key, err := f.findClientPublicJWK(oidcClient, t, false)
+			key, err := f.findClientPublicJWK(ctx, oidcClient, t, false)
 			if err != nil {
 				return nil, wrapSigningKeyFailure(
 					ErrInvalidRequestObject.WithHint("Unable to retrieve ECDSA signing key from OAuth 2.0 Client."), err)
 			}
 			return key, nil
 		case jose.PS256, jose.PS384, jose.PS512:
-			key, err := f.findClientPublicJWK(oidcClient, t, true)
+			key, err := f.findClientPublicJWK(ctx, oidcClient, t, true)
 			if err != nil {
 				return nil, wrapSigningKeyFailure(
 					ErrInvalidRequestObject.WithHint("Unable to retrieve RSA signing key from OAuth 2.0 Client."), err)
@@ -159,6 +155,12 @@ func (f *Fosite) authorizeRequestParametersFromOpenIDConnectRequest(request *Aut
 	}
 
 	claims := token.Claims
+	// Reject the request if the "request_uri" authorization request
+	// parameter is provided.
+	if requestURI, _ := claims["request_uri"].(string); isPARRequest && requestURI != "" {
+		return errorsx.WithStack(ErrInvalidRequestObject.WithHint("Pushed Authorization Requests can not contain the 'request_uri' parameter."))
+	}
+
 	for k, v := range claims {
 		request.Form.Set(k, fmt.Sprintf("%s", v))
 	}
@@ -190,10 +192,10 @@ func (f *Fosite) validateAuthorizeRedirectURI(_ *http.Request, request *Authoriz
 	return nil
 }
 
-func (f *Fosite) validateAuthorizeScope(_ *http.Request, request *AuthorizeRequest) error {
+func (f *Fosite) validateAuthorizeScope(ctx context.Context, _ *http.Request, request *AuthorizeRequest) error {
 	scope := RemoveEmpty(strings.Split(request.Form.Get("scope"), " "))
 	for _, permission := range scope {
-		if !f.ScopeStrategy(request.Client.GetScopes(), permission) {
+		if !f.Config.GetScopeStrategy(ctx)(request.Client.GetScopes(), permission) {
 			return errorsx.WithStack(ErrInvalidScope.WithHintf("The OAuth 2.0 Client is not allowed to request scope '%s'.", permission))
 		}
 	}
@@ -229,7 +231,7 @@ func (f *Fosite) validateResponseTypes(r *http.Request, request *AuthorizeReques
 	return nil
 }
 
-func (f *Fosite) ParseResponseMode(r *http.Request, request *AuthorizeRequest) error {
+func (f *Fosite) ParseResponseMode(ctx context.Context, r *http.Request, request *AuthorizeRequest) error {
 	switch responseMode := r.Form.Get("response_mode"); responseMode {
 	case string(ResponseModeDefault):
 		request.ResponseMode = ResponseModeDefault
@@ -241,8 +243,8 @@ func (f *Fosite) ParseResponseMode(r *http.Request, request *AuthorizeRequest) e
 		request.ResponseMode = ResponseModeFormPost
 	default:
 		rm := ResponseModeType(responseMode)
-		if f.ResponseModeHandler().ResponseModes().Has(rm) {
-			request.ResponseMode = ResponseModeType(rm)
+		if f.ResponseModeHandler(ctx).ResponseModes().Has(rm) {
+			request.ResponseMode = rm
 			break
 		}
 		return errorsx.WithStack(ErrUnsupportedResponseMode.WithHintf("Request with unsupported response_mode \"%s\".", responseMode))
@@ -276,9 +278,59 @@ func (f *Fosite) validateResponseMode(r *http.Request, request *AuthorizeRequest
 	return nil
 }
 
+func (f *Fosite) authorizeRequestFromPAR(ctx context.Context, r *http.Request, request *AuthorizeRequest) (bool, error) {
+	configProvider, ok := f.Config.(PushedAuthorizeRequestConfigProvider)
+	if !ok {
+		// If the config provider is not implemented, PAR cannot be used.
+		return false, nil
+	}
+
+	requestURI := r.Form.Get("request_uri")
+	if requestURI == "" || !strings.HasPrefix(requestURI, configProvider.GetPushedAuthorizeRequestURIPrefix(ctx)) {
+		// nothing to do here
+		return false, nil
+	}
+
+	clientID := r.Form.Get("client_id")
+
+	storage, ok := f.Store.(PARStorage)
+	if !ok {
+		return false, errorsx.WithStack(ErrServerError.WithHint(ErrorPARNotSupported).WithDebug(DebugPARStorageInvalid))
+	}
+
+	// hydrate the requester
+	var parRequest AuthorizeRequester
+	var err error
+	if parRequest, err = storage.GetPARSession(ctx, requestURI); err != nil {
+		return false, errorsx.WithStack(ErrInvalidRequestURI.WithHint("Invalid PAR session").WithWrap(err).WithDebug(err.Error()))
+	}
+
+	// hydrate the request object
+	request.Merge(parRequest)
+	request.RedirectURI = parRequest.GetRedirectURI()
+	request.ResponseTypes = parRequest.GetResponseTypes()
+	request.State = parRequest.GetState()
+	request.ResponseMode = parRequest.GetResponseMode()
+
+	if err := storage.DeletePARSession(ctx, requestURI); err != nil {
+		return false, errorsx.WithStack(ErrServerError.WithWrap(err).WithDebug(err.Error()))
+	}
+
+	// validate the clients match
+	if clientID != request.GetClient().GetID() {
+		return false, errorsx.WithStack(ErrInvalidRequest.WithHint("The 'client_id' must match the one sent in the pushed authorization request."))
+	}
+
+	return true, nil
+}
+
 func (f *Fosite) NewAuthorizeRequest(ctx context.Context, r *http.Request) (AuthorizeRequester, error) {
+	return f.newAuthorizeRequest(ctx, r, false)
+}
+
+func (f *Fosite) newAuthorizeRequest(ctx context.Context, r *http.Request, isPARRequest bool) (AuthorizeRequester, error) {
 	request := NewAuthorizeRequest()
-	request.Request.Lang = i18n.GetLangFromRequest(f.MessageCatalog, r)
+	request.Request.Lang = i18n.GetLangFromRequest(f.Config.GetMessageCatalog(ctx), r)
 
 	ctx = context.WithValue(ctx, RequestContextKey, r)
 	ctx = context.WithValue(ctx, AuthorizeRequestContextKey, request)
@@ -291,6 +343,18 @@ func (f *Fosite) NewAuthorizeRequest(ctx context.Context, r *http.Request) (Auth
 	// Save state to the request to be returned in error conditions (https://github.com/ory/hydra/issues/1642)
 	request.State = request.Form.Get("state")
 
+	// Check if this is a continuation from a pushed authorization request
+	if !isPARRequest {
+		if isPAR, err := f.authorizeRequestFromPAR(ctx, r, request); err != nil {
+			return request, err
+		} else if isPAR {
+			// No need to continue
+			return request, nil
+		} else if configProvider, ok := f.Config.(PushedAuthorizeRequestConfigProvider); ok && configProvider.EnforcePushedAuthorize(ctx) {
+			return request, errorsx.WithStack(ErrInvalidRequest.WithHint("Pushed Authorization Requests are enforced but no such request was sent."))
+		}
+	}
+
 	client, err := f.Store.GetClient(ctx, request.GetRequestForm().Get("client_id"))
 	if err != nil {
 		return request, errorsx.WithStack(ErrInvalidClient.WithHint("The requested OAuth 2.0 Client does not exist.").WithWrap(err).WithDebug(err.Error()))
@@ -302,13 +366,13 @@ func (f *Fosite) NewAuthorizeRequest(ctx context.Context, r *http.Request) (Auth
 	//
 	// All other parse methods should come afterwards so that we ensure that the data is taken
 	// from the request_object if set.
-	if err := f.authorizeRequestParametersFromOpenIDConnectRequest(request); err != nil {
+	if err := f.authorizeRequestParametersFromOpenIDConnectRequest(ctx, request, isPARRequest); err != nil {
 		return request, err
 	}
 
 	// The request context is now fully available and we can start processing the individual
 	// fields.
-	if err := f.ParseResponseMode(r, request); err != nil {
+	if err := f.ParseResponseMode(ctx, r, request); err != nil {
 		return request, err
 	}
 
@@ -316,11 +380,11 @@ func (f *Fosite) NewAuthorizeRequest(ctx context.Context, r *http.Request) (Auth
 		return request, err
 	}
 
-	if err := f.validateAuthorizeScope(r, request); err != nil {
+	if err := f.validateAuthorizeScope(ctx, r, request); err != nil {
 		return request, err
 	}
 
-	if err := f.validateAuthorizeAudience(r, request); err != nil {
+	if err := f.validateAuthorizeAudience(ctx, r, request); err != nil {
 		return request, err
 	}
 
@@ -353,9 +417,9 @@ func (f *Fosite) NewAuthorizeRequest(ctx context.Context, r *http.Request) (Auth
 	//
 	// https://tools.ietf.org/html/rfc6819#section-4.4.1.8
 	// The "state" parameter should not	be guessable
-	if len(request.State) < f.GetMinParameterEntropy() {
+	if len(request.State) < f.GetMinParameterEntropy(ctx) {
 		// We're assuming that using less then, by default, 8 characters for the state can not be considered "unguessable"
-		return request, errorsx.WithStack(ErrInvalidState.WithHintf("Request parameter 'state' must be at least be %d characters long to ensure sufficient entropy.", f.GetMinParameterEntropy()))
+		return request, errorsx.WithStack(ErrInvalidState.WithHintf("Request parameter 'state' must be at least be %d characters long to ensure sufficient entropy.", f.GetMinParameterEntropy(ctx)))
 	}
 
 	return request, nil

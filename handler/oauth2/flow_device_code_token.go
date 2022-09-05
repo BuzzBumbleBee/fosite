@@ -2,6 +2,7 @@ package oauth2
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ory/fosite"
@@ -13,7 +14,7 @@ const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 
 func (d *AuthorizeDeviceGrantTypeHandler) HandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) error {
 
-	if !d.CanHandleTokenEndpointRequest(requester) {
+	if !d.CanHandleTokenEndpointRequest(ctx, requester) {
 		return errorsx.WithStack(errorsx.WithStack(fosite.ErrUnknownRequest))
 	}
 
@@ -25,7 +26,7 @@ func (d *AuthorizeDeviceGrantTypeHandler) HandleTokenEndpointRequest(ctx context
 	if code == "" {
 		return errorsx.WithStack(errorsx.WithStack(fosite.ErrUnknownRequest.WithHint("device_code missing form body")))
 	}
-	codeSignature := d.DeviceCodeStrategy.DeviceCodeSignature(code)
+	codeSignature := d.DeviceCodeStrategy.DeviceCodeSignature(ctx, code)
 
 	// Get the device code session to validate based on HMAC of the device code supplied
 	session, err := d.CoreStorage.GetDeviceCodeSession(ctx, codeSignature, requester.GetSession())
@@ -49,10 +50,10 @@ func (d *AuthorizeDeviceGrantTypeHandler) HandleTokenEndpointRequest(ctx context
 	//requester.SetSession(session.GetSession())
 	//requester.SetID(session.GetID())
 
-	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, d.AccessTokenLifespan)
+	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, d.Config.GetAccessTokenLifespan(ctx))
 	requester.GetSession().SetExpiresAt(fosite.AccessToken, time.Now().UTC().Add(atLifespan).Round(time.Second))
 
-	rtLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.RefreshToken, d.RefreshTokenLifespan)
+	rtLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.RefreshToken, d.Config.GetRefreshTokenLifespan(ctx))
 	if rtLifespan > -1 {
 		requester.GetSession().SetExpiresAt(fosite.RefreshToken, time.Now().UTC().Add(rtLifespan).Round(time.Second))
 	}
@@ -60,17 +61,18 @@ func (d *AuthorizeDeviceGrantTypeHandler) HandleTokenEndpointRequest(ctx context
 	return nil
 }
 
-func (d *AuthorizeDeviceGrantTypeHandler) CanSkipClientAuth(requester fosite.AccessRequester) bool {
+func (d *AuthorizeDeviceGrantTypeHandler) CanSkipClientAuth(ctx context.Context, requester fosite.AccessRequester) bool {
 	return true
 }
 
-func (d *AuthorizeDeviceGrantTypeHandler) CanHandleTokenEndpointRequest(requester fosite.AccessRequester) bool {
+func (d *AuthorizeDeviceGrantTypeHandler) CanHandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) bool {
+	fmt.Println("CanHandleTokenEndpointRequest OAUTH")
 	return requester.GetGrantTypes().ExactOne(deviceCodeGrantType)
 }
 
 func (d *AuthorizeDeviceGrantTypeHandler) PopulateTokenEndpointResponse(ctx context.Context, requester fosite.AccessRequester, responder fosite.AccessResponder) error {
 
-	if !d.CanHandleTokenEndpointRequest(requester) {
+	if !d.CanHandleTokenEndpointRequest(ctx, requester) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
@@ -78,7 +80,7 @@ func (d *AuthorizeDeviceGrantTypeHandler) PopulateTokenEndpointResponse(ctx cont
 	if code == "" {
 		return errorsx.WithStack(errorsx.WithStack(fosite.ErrUnknownRequest.WithHint("device_code missing form body")))
 	}
-	codeSignature := d.DeviceCodeStrategy.DeviceCodeSignature(code)
+	codeSignature := d.DeviceCodeStrategy.DeviceCodeSignature(ctx, code)
 
 	if err := d.DeviceCodeStrategy.ValidateDeviceCode(ctx, requester, code); err != nil {
 		// This needs to happen after store retrieval for the session to be hydrated properly
@@ -107,7 +109,7 @@ func (d *AuthorizeDeviceGrantTypeHandler) PopulateTokenEndpointResponse(ctx cont
 
 	var refresh, refreshSignature string
 
-	if d.canIssueRefreshToken(requester) {
+	if d.canIssueRefreshToken(ctx, requester) {
 		refresh, refreshSignature, err = d.RefreshTokenStrategy.GenerateRefreshToken(ctx, requester)
 		if err != nil {
 			return errorsx.WithStack(fosite.ErrServerError.WithWrap(err).WithDebug(err.Error()))
@@ -138,7 +140,7 @@ func (d *AuthorizeDeviceGrantTypeHandler) PopulateTokenEndpointResponse(ctx cont
 
 	responder.SetAccessToken(access)
 	responder.SetTokenType("bearer")
-	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, d.AccessTokenLifespan)
+	atLifespan := fosite.GetEffectiveLifespan(requester.GetClient(), fosite.GrantTypeAuthorizationCode, fosite.AccessToken, d.Config.GetAccessTokenLifespan(ctx))
 	responder.SetExpiresIn(getExpiresIn(requester, fosite.AccessToken, atLifespan, time.Now().UTC()))
 	responder.SetScopes(requester.GetGrantedScopes())
 	if refresh != "" {
@@ -152,9 +154,9 @@ func (d *AuthorizeDeviceGrantTypeHandler) PopulateTokenEndpointResponse(ctx cont
 	return nil
 }
 
-func (c *AuthorizeDeviceGrantTypeHandler) canIssueRefreshToken(request fosite.Requester) bool {
+func (c *AuthorizeDeviceGrantTypeHandler) canIssueRefreshToken(ctx context.Context, request fosite.Requester) bool {
 	// Require one of the refresh token scopes, if set.
-	if len(c.RefreshTokenScopes) > 0 && !request.GetGrantedScopes().HasOneOf(c.RefreshTokenScopes...) {
+	if len(c.Config.GetRefreshTokenScopes(ctx)) > 0 && !request.GetGrantedScopes().HasOneOf(c.Config.GetRefreshTokenScopes(ctx)...) {
 		return false
 	}
 	return true

@@ -22,11 +22,15 @@
 package openid
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/ory/fosite/internal"
+	"github.com/ory/fosite/internal/gen"
 
 	cristaljwt "github.com/cristalhq/jwt/v4"
 	"github.com/golang/mock/gomock"
@@ -35,7 +39,6 @@ import (
 
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/handler/oauth2"
-	"github.com/ory/fosite/internal"
 	"github.com/ory/fosite/storage"
 	"github.com/ory/fosite/token/hmac"
 	"github.com/ory/fosite/token/jwt"
@@ -43,7 +46,9 @@ import (
 
 var hmacStrategy = &oauth2.HMACSHAStrategy{
 	Enigma: &hmac.HMACStrategy{
-		GlobalSecret: []byte("some-super-cool-secret-that-nobody-knows-nobody-knows"),
+		Config: &fosite.Config{
+			GlobalSecret: []byte("some-super-cool-secret-that-nobody-knows-nobody-knows"),
+		},
 	},
 }
 
@@ -55,40 +60,54 @@ type defaultSession struct {
 
 func makeOpenIDConnectHybridHandler(minParameterEntropy int) OpenIDConnectHybridHandler {
 	var idStrategy = &DefaultStrategy{
-		JWTStrategy: &jwt.RS256JWTStrategy{
-			PrivateKey: internal.MustRSAKey(),
+		Signer: &jwt.DefaultSigner{
+			GetPrivateKey: func(_ context.Context) (interface{}, error) {
+				return gen.MustRSAKey(), nil
+			},
 		},
-		MinParameterEntropy: minParameterEntropy,
+		Config: &fosite.Config{
+			MinParameterEntropy: minParameterEntropy,
+		},
 	}
 
 	var j = &DefaultStrategy{
-		JWTStrategy: &jwt.RS256JWTStrategy{
-			PrivateKey: key,
+		Signer: &jwt.DefaultSigner{
+			GetPrivateKey: func(_ context.Context) (interface{}, error) {
+				return key, nil
+			},
 		},
-		MinParameterEntropy: minParameterEntropy,
+		Config: &fosite.Config{
+			MinParameterEntropy: minParameterEntropy,
+		},
 	}
 
+	config := &fosite.Config{
+		ScopeStrategy:         fosite.HierarchicScopeStrategy,
+		MinParameterEntropy:   minParameterEntropy,
+		AccessTokenLifespan:   time.Hour,
+		AuthorizeCodeLifespan: time.Hour,
+		RefreshTokenLifespan:  time.Hour,
+	}
 	return OpenIDConnectHybridHandler{
 		AuthorizeExplicitGrantHandler: &oauth2.AuthorizeExplicitGrantHandler{
 			AuthorizeCodeStrategy: hmacStrategy,
-			AccessTokenLifespan:   time.Hour,
-			AuthCodeLifespan:      time.Hour,
-			RefreshTokenLifespan:  time.Hour,
 			AccessTokenStrategy:   hmacStrategy,
 			CoreStorage:           storage.NewMemoryStore(),
+			Config:                config,
 		},
 		AuthorizeImplicitGrantTypeHandler: &oauth2.AuthorizeImplicitGrantTypeHandler{
-			AccessTokenLifespan: time.Hour,
+			Config: &fosite.Config{
+				AccessTokenLifespan: time.Hour,
+			},
 			AccessTokenStrategy: hmacStrategy,
 			AccessTokenStorage:  storage.NewMemoryStore(),
 		},
 		IDTokenHandleHelper: &IDTokenHandleHelper{
 			IDTokenStrategy: idStrategy,
 		},
-		ScopeStrategy:                 fosite.HierarchicScopeStrategy,
-		OpenIDConnectRequestValidator: NewOpenIDConnectRequestValidator(nil, j.JWTStrategy),
+		Config:                        config,
+		OpenIDConnectRequestValidator: NewOpenIDConnectRequestValidator(j.Signer, config),
 		OpenIDConnectRequestStorage:   storage.NewMemoryStore(),
-		MinParameterEntropy:           minParameterEntropy,
 	}
 }
 
@@ -198,6 +217,29 @@ func TestHybrid_HandleAuthorizeEndpointRequest(t *testing.T) {
 			expectErr: fosite.ErrInvalidGrant,
 		},
 		{
+			description: "should pass with exact one state parameter in response",
+			setup: func() OpenIDConnectHybridHandler {
+				areq.Form = url.Values{"nonce": {"long-enough"}, "state": {""}}
+				areq.Client = &fosite.DefaultClient{
+					GrantTypes:    fosite.Arguments{"authorization_code", "implicit"},
+					ResponseTypes: fosite.Arguments{"token", "code", "id_token"},
+					Scopes:        []string{"openid"},
+				}
+				return makeOpenIDConnectHybridHandler(fosite.MinParameterEntropy)
+			},
+			check: func() {
+				params := aresp.GetParameters()
+				var stateParam []string
+				for k, v := range params {
+					if k == "state" {
+						stateParam = v
+						break
+					}
+				}
+				assert.Len(t, stateParam, 1)
+			},
+		},
+		{
 			description: "should pass because nonce was set with sufficient entropy",
 			setup: func() OpenIDConnectHybridHandler {
 				areq.Form.Set("nonce", "some-foobar-nonce-win")
@@ -251,7 +293,7 @@ func TestHybrid_HandleAuthorizeEndpointRequest(t *testing.T) {
 				assert.NotEmpty(t, aresp.GetParameters().Get("id_token"))
 				assert.NotEmpty(t, aresp.GetParameters().Get("code"))
 				assert.NotEmpty(t, aresp.GetParameters().Get("access_token"))
-				assert.Equal(t, time.Now().Add(time.Hour).UTC().Round(time.Second), areq.GetSession().GetExpiresAt(fosite.AuthorizeCode))
+				internal.RequireEqualTime(t, time.Now().Add(time.Hour).UTC(), areq.GetSession().GetExpiresAt(fosite.AuthorizeCode), time.Second)
 			},
 		},
 		{

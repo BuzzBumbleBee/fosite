@@ -28,11 +28,15 @@ import (
 	"github.com/ory/fosite"
 )
 
+type HandleHelperConfigProvider interface {
+	fosite.AccessTokenLifespanProvider
+	fosite.RefreshTokenLifespanProvider
+}
+
 type HandleHelper struct {
-	AccessTokenStrategy  AccessTokenStrategy
-	AccessTokenStorage   AccessTokenStorage
-	AccessTokenLifespan  time.Duration
-	RefreshTokenLifespan time.Duration
+	AccessTokenStrategy AccessTokenStrategy
+	AccessTokenStorage  AccessTokenStorage
+	Config              HandleHelperConfigProvider
 }
 
 func (h *HandleHelper) IssueAccessToken(ctx context.Context, defaultLifespan time.Duration, requester fosite.AccessRequester, responder fosite.AccessResponder) error {

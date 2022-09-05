@@ -36,24 +36,16 @@ import (
 )
 
 type HandlerDevice struct {
-	CoreStorage        oauth2.CoreStorage
-	DeviceCodeStrategy oauth2.DeviceCodeStrategy
-	UserCodeStrategy   oauth2.UserCodeStrategy
-
-	// If set to true, clients must use PKCE.
-	Force bool
-
-	// If set to true, public clients must use PKCE.
-	ForceForPublicClients bool
-
-	// Whether or not to allow the plain challenge method (S256 should be used whenever possible, plain is really discouraged).
-	EnablePlainChallengeMethod bool
-
+	CoreStorage           oauth2.CoreStorage
+	DeviceCodeStrategy    oauth2.DeviceCodeStrategy
+	UserCodeStrategy      oauth2.UserCodeStrategy
 	AuthorizeCodeStrategy oauth2.AuthorizeCodeStrategy
 	Storage               PKCERequestStorage
+	Config                fosite.Configurator
 }
 
 func (c *HandlerDevice) HandleDeviceAuthorizeEndpointRequest(ctx context.Context, ar fosite.Requester, resp fosite.DeviceAuthorizeResponder) error {
+	fmt.Println("HandlerDevice :: HandleDeviceAuthorizeEndpointRequest ++")
 
 	if !ar.GetClient().GetGrantTypes().Has("urn:ietf:params:oauth:grant-type:device_code") {
 		return nil
@@ -64,16 +56,18 @@ func (c *HandlerDevice) HandleDeviceAuthorizeEndpointRequest(ctx context.Context
 	client := ar.GetClient()
 	userCode := resp.GetUserCode()
 
-	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(userCode)
+	userCodeSignature := c.UserCodeStrategy.UserCodeSignature(ctx, userCode)
 
 	session, err := c.CoreStorage.GetUserCodeSession(ctx, userCodeSignature, fosite.NewRequest().Session)
 	if err != nil {
 		return err
 	}
 
-	if err := c.validate(challenge, method, client); err != nil {
+	if err := c.validate(ctx, challenge, method, client); err != nil {
 		return err
 	}
+
+	fmt.Println("PKCE ID : " + session.GetID())
 
 	if err := c.Storage.CreatePKCERequestSession(ctx, session.GetID(), ar.Sanitize([]string{
 		"code_challenge",
@@ -87,7 +81,7 @@ func (c *HandlerDevice) HandleDeviceAuthorizeEndpointRequest(ctx context.Context
 	return nil
 }
 
-func (c *HandlerDevice) validate(challenge, method string, client fosite.Client) error {
+func (c *HandlerDevice) validate(ctx context.Context, challenge string, method string, client fosite.Client) error {
 	if challenge == "" {
 		// If the server requires Proof Key for Code Exchange (PKCE) by OAuth
 		// clients and the client does not send the "code_challenge" in
@@ -96,15 +90,12 @@ func (c *HandlerDevice) validate(challenge, method string, client fosite.Client)
 		// "error_description" or the response of "error_uri" SHOULD explain the
 		// nature of error, e.g., code challenge required.
 
-		fmt.Println(c.ForceForPublicClients)
-		fmt.Println(client.IsPublic())
-
-		if c.Force {
+		if c.Config.GetEnforcePKCE(ctx) {
 			return errorsx.WithStack(fosite.ErrInvalidRequest.
 				WithHint("Clients must include a code_challenge when performing the authorize code flow, but it is missing.").
 				WithDebug("The server is configured in a way that enforces PKCE for clients."))
 		}
-		if c.ForceForPublicClients && client.IsPublic() {
+		if c.Config.GetEnforcePKCEForPublicClients(ctx) && client.IsPublic() {
 			return errorsx.WithStack(fosite.ErrInvalidRequest.
 				WithHint("This client must include a code_challenge when performing the authorize code flow, but it is missing.").
 				WithDebug("The server is configured in a way that enforces PKCE for this client."))
@@ -124,7 +115,7 @@ func (c *HandlerDevice) validate(challenge, method string, client fosite.Client)
 	case "plain":
 		fallthrough
 	case "":
-		if !c.EnablePlainChallengeMethod {
+		if !c.Config.GetEnablePKCEPlainChallengeMethod(ctx) {
 			return errorsx.WithStack(fosite.ErrInvalidRequest.
 				WithHint("Clients must use code_challenge_method=S256, plain is not allowed.").
 				WithDebug("The server is configured in a way that enforces PKCE S256 as challenge method for clients."))
@@ -137,7 +128,7 @@ func (c *HandlerDevice) validate(challenge, method string, client fosite.Client)
 }
 
 func (c *HandlerDevice) HandleTokenEndpointRequest(ctx context.Context, request fosite.AccessRequester) error {
-	if !c.CanHandleTokenEndpointRequest(request) {
+	if !c.CanHandleTokenEndpointRequest(ctx, request) {
 		return errorsx.WithStack(fosite.ErrUnknownRequest)
 	}
 
@@ -153,7 +144,9 @@ func (c *HandlerDevice) HandleTokenEndpointRequest(ctx context.Context, request 
 	if code == "" {
 		return errorsx.WithStack(errorsx.WithStack(fosite.ErrUnknownRequest.WithHint("device_code missing form body")))
 	}
-	codeSignature := c.DeviceCodeStrategy.DeviceCodeSignature(code)
+	codeSignature := c.DeviceCodeStrategy.DeviceCodeSignature(ctx, code)
+
+	fmt.Println("PKCE ID : " + codeSignature)
 
 	authorizeRequest, err := c.Storage.GetPKCERequestSession(ctx, codeSignature, request.GetSession())
 	if errors.Is(err, fosite.ErrNotFound) {
@@ -169,11 +162,11 @@ func (c *HandlerDevice) HandleTokenEndpointRequest(ctx context.Context, request 
 	challenge := authorizeRequest.GetRequestForm().Get("code_challenge")
 	method := authorizeRequest.GetRequestForm().Get("code_challenge_method")
 	client := authorizeRequest.GetClient()
-	if err := c.validate(challenge, method, client); err != nil {
+	if err := c.validate(ctx, challenge, method, client); err != nil {
 		return err
 	}
 
-	if !c.Force && challenge == "" && verifier == "" {
+	if !c.Config.GetEnforcePKCE(ctx) && challenge == "" && verifier == "" {
 		return nil
 	}
 
@@ -244,11 +237,12 @@ func (c *HandlerDevice) PopulateTokenEndpointResponse(ctx context.Context, reque
 	return nil
 }
 
-func (c *HandlerDevice) CanSkipClientAuth(requester fosite.AccessRequester) bool {
+func (c *HandlerDevice) CanSkipClientAuth(ctx context.Context, requester fosite.AccessRequester) bool {
 	return false
 }
 
-func (c *HandlerDevice) CanHandleTokenEndpointRequest(requester fosite.AccessRequester) bool {
+func (c *HandlerDevice) CanHandleTokenEndpointRequest(ctx context.Context, requester fosite.AccessRequester) bool {
+	fmt.Println("CanHandleTokenEndpointRequest PKCE")
 	// grant_type REQUIRED.
 	// Value MUST be set to "authorization_code"
 	return requester.GetGrantTypes().ExactOne("urn:ietf:params:oauth:grant-type:device_code")
