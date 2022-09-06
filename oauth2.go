@@ -281,6 +281,12 @@ type AccessRequester interface {
 
 // DeviceAuthorizeRequester is an device authorize endpoint's request context.
 type DeviceAuthorizeRequester interface {
+	// SetDeviceCodeSignature set the device code signature
+	SetDeviceCodeSignature(signature string)
+
+	// GetDeviceCodeSignature returns the device code signature
+	GetDeviceCodeSignature() string
+
 	Requester
 }
 
