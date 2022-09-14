@@ -58,23 +58,25 @@ func Compose(config *Config, storage interface{}, strategy interface{}, hasher f
 	}
 
 	f := &fosite.Fosite{
-		Store:                        storage.(fosite.Storage),
-		AuthorizeEndpointHandlers:    fosite.AuthorizeEndpointHandlers{},
-		TokenEndpointHandlers:        fosite.TokenEndpointHandlers{},
-		TokenIntrospectionHandlers:   fosite.TokenIntrospectionHandlers{},
-		RevocationHandlers:           fosite.RevocationHandlers{},
-		Hasher:                       hasher,
-		ScopeStrategy:                config.GetScopeStrategy(),
-		AudienceMatchingStrategy:     config.GetAudienceStrategy(),
-		SendDebugMessagesToClients:   config.SendDebugMessagesToClients,
-		TokenURL:                     config.TokenURL,
-		JWKSFetcherStrategy:          config.GetJWKSFetcherStrategy(),
-		MinParameterEntropy:          config.GetMinParameterEntropy(),
-		UseLegacyErrorFormat:         config.UseLegacyErrorFormat,
-		ClientAuthenticationStrategy: config.GetClientAuthenticationStrategy(),
-		ResponseModeHandlerExtension: config.ResponseModeHandlerExtension,
-		MessageCatalog:               config.MessageCatalog,
-		FormPostHTMLTemplate:         config.FormPostHTMLTemplate,
+		Store:                           storage.(fosite.Storage),
+		AuthorizeEndpointHandlers:       fosite.AuthorizeEndpointHandlers{},
+		DeviceEndpointHandlers:          fosite.DeviceEndpointHandlers{},
+		DeviceAuthorizeEndpointHandlers: fosite.DeviceAuthorizeEndpointHandlers{},
+		TokenEndpointHandlers:           fosite.TokenEndpointHandlers{},
+		TokenIntrospectionHandlers:      fosite.TokenIntrospectionHandlers{},
+		RevocationHandlers:              fosite.RevocationHandlers{},
+		Hasher:                          hasher,
+		ScopeStrategy:                   config.GetScopeStrategy(),
+		AudienceMatchingStrategy:        config.GetAudienceStrategy(),
+		SendDebugMessagesToClients:      config.SendDebugMessagesToClients,
+		TokenURL:                        config.TokenURL,
+		JWKSFetcherStrategy:             config.GetJWKSFetcherStrategy(),
+		MinParameterEntropy:             config.GetMinParameterEntropy(),
+		UseLegacyErrorFormat:            config.UseLegacyErrorFormat,
+		ClientAuthenticationStrategy:    config.GetClientAuthenticationStrategy(),
+		ResponseModeHandlerExtension:    config.ResponseModeHandlerExtension,
+		MessageCatalog:                  config.MessageCatalog,
+		FormPostHTMLTemplate:            config.FormPostHTMLTemplate,
 	}
 
 	for _, factory := range factories {
@@ -90,6 +92,12 @@ func Compose(config *Config, storage interface{}, strategy interface{}, hasher f
 		}
 		if rh, ok := res.(fosite.RevocationHandler); ok {
 			f.RevocationHandlers.Append(rh)
+		}
+		if dh, ok := res.(fosite.DeviceEndpointHandler); ok {
+			f.DeviceEndpointHandlers.Append(dh)
+		}
+		if dah, ok := res.(fosite.DeviceAuthorizeEndpointHandler); ok {
+			f.DeviceAuthorizeEndpointHandlers.Append(dah)
 		}
 	}
 
@@ -114,6 +122,7 @@ func ComposeAllEnabled(config *Config, storage interface{}, secret []byte, key *
 		OAuth2AuthorizeImplicitFactory,
 		OAuth2ClientCredentialsGrantFactory,
 		OAuth2RefreshTokenGrantFactory,
+		OAuth2DeviceFactory,
 		OAuth2ResourceOwnerPasswordCredentialsFactory,
 		RFC7523AssertionGrantFactory,
 
@@ -121,10 +130,12 @@ func ComposeAllEnabled(config *Config, storage interface{}, secret []byte, key *
 		OpenIDConnectImplicitFactory,
 		OpenIDConnectHybridFactory,
 		OpenIDConnectRefreshFactory,
+		OpenIDConnectDeviceFactory,
 
 		OAuth2TokenIntrospectionFactory,
 		OAuth2TokenRevocationFactory,
 
 		OAuth2PKCEFactory,
+		OAuth2DevicePKCEFactory,
 	)
 }

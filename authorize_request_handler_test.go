@@ -170,7 +170,7 @@ func TestNewAuthorizeRequest(t *testing.T) {
 			},
 			expectedError: ErrInvalidScope,
 		},
-		/* fails because scope not given */
+		/* fails because audience not given */
 		{
 			desc: "should fail because client does not have scope baz",
 			conf: &Fosite{Store: store, ScopeStrategy: ExactScopeStrategy, AudienceMatchingStrategy: DefaultAudienceMatchingStrategy},

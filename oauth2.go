@@ -41,6 +41,8 @@ const (
 	RefreshToken  TokenType = "refresh_token"
 	AuthorizeCode TokenType = "authorize_code"
 	IDToken       TokenType = "id_token"
+	DeviceCode    TokenType = "device_code"
+	UserCode      TokenType = "user_code"
 
 	GrantTypeImplicit          GrantType = "implicit"
 	GrantTypeRefreshToken      GrantType = "refresh_token"
@@ -116,6 +118,37 @@ type OAuth2Provider interface {
 	//   making the authorization request.
 	// * https://tools.ietf.org/html/rfc6749#section-3.1.2.2 (everything MUST be implemented)
 	WriteAuthorizeResponse(rw http.ResponseWriter, requester AuthorizeRequester, responder AuthorizeResponder)
+
+	// NewDeviceAuthorizeRequest returns an DeviceAuthorizeRequest.
+	// TODO Add documentation
+	NewDeviceAuthorizeRequest(ctx context.Context, req *http.Request) (DeviceAuthorizeRequester, error)
+
+	// NewDeviceAuthorizeResponse
+	// TODO Add documentation
+	NewDeviceAuthorizeResponse(ctx context.Context, requester DeviceAuthorizeRequester, session Session) (DeviceAuthorizeResponder, error)
+
+	// WriteDeviceAuthorizeResponse
+	// TODO Add documentation
+	WriteDeviceAuthorizeResponse(rw http.ResponseWriter, requester DeviceAuthorizeRequester, responder DeviceAuthorizeResponder)
+
+	// NewDeviceRequest validate the OAuth 2.0 Device Authorization Flow Request
+	//
+	// The following specs must be considered in any implementation of this method:
+	// * https://www.rfc-editor.org/rfc/rfc8628#section-3.1 (everything MUST be implemented)
+	NewDeviceRequest(ctx context.Context, req *http.Request) (DeviceRequester, error)
+
+	// NewDeviceResponse persists the DeviceCodeSession and UserCodeSession in the store
+	//
+	// The following specs must be considered in any implementation of this method:
+	// * https://www.rfc-editor.org/rfc/rfc8628#section-3.2 (everything MUST be implemented)
+	NewDeviceResponse(ctx context.Context, requester DeviceRequester) (DeviceResponder, error)
+
+	// WriteDeviceAuthorizeResponse return to the user both codes and
+	// some configuration informations in a JSON formated manner
+	//
+	// The following specs must be considered in any implementation of this method:
+	// * https://www.rfc-editor.org/rfc/rfc8628#section-3.2 (everything MUST be implemented)
+	WriteDeviceResponse(rw http.ResponseWriter, requester DeviceRequester, responder DeviceResponder)
 
 	// NewAccessRequest creates a new access request object and validates
 	// various parameters.
@@ -258,6 +291,22 @@ type AccessRequester interface {
 	Requester
 }
 
+// DeviceRequester is an device endpoint's request context.
+type DeviceRequester interface {
+	Requester
+}
+
+// DeviceAuthorizeRequester is an device authorize endpoint's request context.
+type DeviceAuthorizeRequester interface {
+	// SetDeviceCodeSignature set the device code signature
+	SetDeviceCodeSignature(signature string)
+
+	// GetDeviceCodeSignature returns the device code signature
+	GetDeviceCodeSignature() string
+
+	Requester
+}
+
 // AuthorizeRequester is an authorize endpoint's request context.
 type AuthorizeRequester interface {
 	// GetResponseTypes returns the requested response types
@@ -342,4 +391,27 @@ type AuthorizeResponder interface {
 type G11NContext interface {
 	// GetLang returns the current language in the context
 	GetLang() language.Tag
+}
+
+type DeviceAuthorizeResponder interface {
+}
+
+type DeviceResponder interface {
+	GetDeviceCode() string
+	SetDeviceCode(code string)
+
+	GetUserCode() string
+	SetUserCode(code string)
+
+	GetVerificationURI() string
+	SetVerificationURI(uri string)
+
+	GetVerificationURIComplete() string
+	SetVerificationURIComplete(uri string)
+
+	GetExpiresIn() int64
+	SetExpiresIn(seconds int64)
+
+	GetInterval() int
+	SetInterval(seconds int)
 }

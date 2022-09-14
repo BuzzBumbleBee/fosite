@@ -41,6 +41,10 @@ type Config struct {
 	// AuthorizeCodeLifespan sets how long an authorize code is going to be valid. Defaults to fifteen minutes.
 	AuthorizeCodeLifespan time.Duration
 
+	DeviceAndUserCodeLifespan time.Duration
+
+	DeviceAuthTokenPollingInterval time.Duration
+
 	// IDTokenLifespan sets the default id token lifetime. Defaults to one hour.
 	IDTokenLifespan time.Duration
 
@@ -75,6 +79,8 @@ type Config struct {
 
 	// AllowedPromptValues sets which OpenID Connect prompt values the server supports. Defaults to []string{"login", "none", "consent", "select_account"}.
 	AllowedPromptValues []string
+
+	DeviceVerificationURL string
 
 	// TokenURL is the the URL of the Authorization Server's Token Endpoint. If the authorization server is intended
 	// to be compatible with the private_key_jwt client authentication method (see http://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth),
@@ -151,6 +157,13 @@ func (c *Config) GetAuthorizeCodeLifespan() time.Duration {
 	return c.AuthorizeCodeLifespan
 }
 
+func (c *Config) GetDeviceAndUserCodeLifespan() time.Duration {
+	if c.DeviceAndUserCodeLifespan == 0 {
+		return time.Minute * 15
+	}
+	return c.DeviceAndUserCodeLifespan
+}
+
 // GeIDTokenLifespan returns how long an id token should be valid. Defaults to one hour.
 func (c *Config) GetIDTokenLifespan() time.Duration {
 	if c.IDTokenLifespan == 0 {
@@ -174,6 +187,13 @@ func (c *Config) GetRefreshTokenLifespan() time.Duration {
 		return time.Hour * 24 * 30
 	}
 	return c.RefreshTokenLifespan
+}
+
+func (c *Config) GetDeviceAuthTokenPollingInterval() time.Duration {
+	if c.DeviceAuthTokenPollingInterval == 0 {
+		return time.Second * 5
+	}
+	return c.DeviceAuthTokenPollingInterval
 }
 
 // GetHashCost returns the bcrypt cost factor. Defaults to 12.
