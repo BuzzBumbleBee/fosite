@@ -304,6 +304,12 @@ type DeviceAuthorizeRequester interface {
 	// GetDeviceCodeSignature returns the device code signature
 	GetDeviceCodeSignature() string
 
+	// SetDeviceCodeSignature set the redirection url once the user has completed the login flow
+	SetDeviceDoneUrl(url *url.URL)
+
+	// GetDeviceDoneUrl returns the redirection url once the user has completed the login flow
+	GetDeviceDoneUrl() *url.URL
+
 	Requester
 }
 

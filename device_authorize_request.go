@@ -21,9 +21,12 @@
 
 package fosite
 
+import "net/url"
+
 // DeviceAuthorizeRequest is an implementation of DeviceAuthorizeRequester
 type DeviceAuthorizeRequest struct {
 	deviceCodeSignature string
+	deviceDoneUrl       *url.URL
 	Request
 }
 
@@ -33,6 +36,14 @@ func (d *DeviceAuthorizeRequest) GetDeviceCodeSignature() string {
 
 func (d *DeviceAuthorizeRequest) SetDeviceCodeSignature(signature string) {
 	d.deviceCodeSignature = signature
+}
+
+func (d *DeviceAuthorizeRequest) GetDeviceDoneUrl() *url.URL {
+	return d.deviceDoneUrl
+}
+
+func (d *DeviceAuthorizeRequest) SetDeviceDoneUrl(url *url.URL) {
+	d.deviceDoneUrl = url
 }
 
 func NewDeviceAuthorizeRequest() *DeviceAuthorizeRequest {

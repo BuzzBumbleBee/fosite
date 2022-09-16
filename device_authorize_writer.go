@@ -30,6 +30,6 @@ import (
 func (f *Fosite) WriteDeviceAuthorizeResponse(rw http.ResponseWriter, requester DeviceAuthorizeRequester, responder DeviceAuthorizeResponder) {
 	rw.Header().Set("Cache-Control", "no-store")
 	rw.Header().Set("Pragma", "no-cache")
-	rw.Header().Set("Location", "https://www.google.fr")
+	rw.Header().Set("Location", requester.GetDeviceDoneUrl().String())
 	rw.WriteHeader(http.StatusSeeOther)
 }
